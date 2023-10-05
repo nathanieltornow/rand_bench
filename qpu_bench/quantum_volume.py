@@ -21,7 +21,7 @@ def _calculate_heavy_output_probability(
 
 
 def _run_qv_experiment(
-    noisy_runner: Runner, num_qubits: int, num_trials: int = 100, shots: int = 1024
+    noisy_runner: Runner, num_qubits: int, num_trials: int = 100, shots: int = 100
 ) -> bool:
     qv_circs = [QuantumVolume(num_qubits) for _ in range(num_trials)]
     for qv_circ in qv_circs:
@@ -57,7 +57,7 @@ def find_quantum_volume(
     noisy_runner: Runner,
     num_trials: int = 100,
     max_num_qubits: int = 7,
-    shots: int = 1024,
+    shots: int = 100,
 ) -> int:
     """Finds the quantum volume of a noisy backend using binary search.
 

@@ -11,7 +11,7 @@ from .prob_distr import ProbDistr
 
 class Runner(abc.ABC):
     @abc.abstractmethod
-    def run(self, circuits: list[QuantumCircuit], shots: int = 1024) -> list[ProbDistr]:
+    def run(self, circuits: list[QuantumCircuit], shots: int = 100) -> list[ProbDistr]:
         ...
 
 
@@ -21,7 +21,7 @@ class BackendRunner(Runner):
         self._backend = backend
         self._opt_level = opt_level
 
-    def run(self, circuits: list[QuantumCircuit], shots: int = 1024) -> list[ProbDistr]:
+    def run(self, circuits: list[QuantumCircuit], shots: int = 100) -> list[ProbDistr]:
         circuits = transpile(
             circuits, backend=self._backend, optimization_level=self._opt_level
         )
