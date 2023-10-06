@@ -8,7 +8,6 @@ from .runner import Runner, SimulatorRunner
 from .prob_distr import ProbDistr
 
 
-# set a logger for this module
 logger = logging.getLogger("qpu_bench")
 
 
@@ -67,17 +66,20 @@ def _run_qv_experiment(
     for qv_circ in qv_circs:
         qv_circ.measure_active()
 
+    # simulate the QV circuits without noise for the comparison
     sim_runner = SimulatorRunner()
     sim_results = sim_runner.run(qv_circs, shots=shots)
 
+    # run the QV circuits on the noisy QPU
     noisy_results = noisy_runner.run(qv_circs, shots=shots)
 
+    # calculate the probability of heavy output for each trial
     hops = []
     for sim_res, noisy_res in zip(sim_results, noisy_results):
         hops.append(_calculate_heavy_output_probability(sim_res, noisy_res))
 
+    # calculate the mean hop, and threshold that must be exceeded
     mean_hop = np.mean(hops)
-
     sigma_hop = (mean_hop * ((1.0 - mean_hop) / num_trials)) ** 0.5
     threshold = 2 / 3 + z * sigma_hop
 
@@ -85,9 +87,9 @@ def _run_qv_experiment(
     logger.info(f"Threshold: {threshold}")
     logger.info(f"Sigma hop: {sigma_hop}")
 
+    # return true if the mean hop is greater than the threshold
     if mean_hop < threshold:
         return False
-
     return True
 
 
