@@ -1,4 +1,5 @@
 import abc
+from dataclasses import dataclass, asdict
 
 from qiskit_ibm_provider import IBMProvider
 from qiskit.circuit import QuantumCircuit
@@ -16,16 +17,20 @@ class Runner(abc.ABC):
 
 
 class BackendRunner(Runner):
-    def __init__(self, backend: BackendV2, opt_level: int = 3) -> None:
+    def __init__(self, backend: BackendV2, compile_options: dict | None = None) -> None:
         super().__init__()
         self._backend = backend
-        self._opt_level = opt_level
+        if compile_options is None:
+            compile_options = {"optimization_level": 3}
+        self._compile_options = compile_options
 
     def run(self, circuits: list[QuantumCircuit], shots: int = 100) -> list[ProbDistr]:
-        circuits = transpile(
-            circuits, backend=self._backend, optimization_level=self._opt_level
+        circuits = transpile(circuits, backend=self._backend, **self._compile_options)
+        counts = (
+            self._backend.run(circuits, shots=shots)
+            .result()
+            .get_counts()
         )
-        counts = self._backend.run(circuits, shots=shots).result().get_counts()
         counts = [counts] if isinstance(counts, dict) else counts
         return [ProbDistr.from_counts(count) for count in counts]
 
@@ -36,8 +41,8 @@ class SimulatorRunner(BackendRunner):
 
 
 class SimulatedBackendRunner(BackendRunner):
-    def __init__(self, backend: BackendV2) -> None:
-        super().__init__(AerSimulator.from_backend(backend))
+    def __init__(self, backend: BackendV2, compiler_options: dict) -> None:
+        super().__init__(AerSimulator.from_backend(backend), compiler_options)
 
 
 class IBMRunner(Runner):
