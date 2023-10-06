@@ -8,7 +8,21 @@ from .runner import Runner, SimulatorRunner
 from .prob_distr import ProbDistr
 
 
+# set a logger for this module
+logger = logging.getLogger("qpu_bench")
+
+
 def _calculate_heavy_output(prob_distr: ProbDistr) -> list[str]:
+    """
+    Calculates the heavy output of a probability distribution.
+    A heavy output is an output with probability greater than or equal to the median.
+
+    Args:
+        prob_distr (ProbDistr): The probability distribution.
+
+    Returns:
+        list[str]: The heavy outputs.
+    """
     median = np.median(list(prob_distr.values()))
     return [k for k, v in prob_distr.items() if v >= median]
 
@@ -16,13 +30,39 @@ def _calculate_heavy_output(prob_distr: ProbDistr) -> list[str]:
 def _calculate_heavy_output_probability(
     sim_result: ProbDistr, noisy_result: ProbDistr
 ) -> float:
+    """Calculates the probability of heavy output.
+
+    Args:
+        sim_result (ProbDistr): The results of perfect simulation.
+        noisy_result (ProbDistr): The noisy results.
+
+    Returns:
+        float: The probability of heavy output.
+    """
     sim_heavy_output = _calculate_heavy_output(sim_result)
     return sum(noisy_result.get(k, 0.0) for k in sim_heavy_output)
 
 
 def _run_qv_experiment(
-    noisy_runner: Runner, num_qubits: int, num_trials: int = 100, shots: int = 100
+    noisy_runner: Runner,
+    num_qubits: int,
+    num_trials: int = 100,
+    shots: int = 100,
+    z: int = 2,
 ) -> bool:
+    """
+    Runs a single quantum volume experiment.
+    Returns true, if the experiment passes for the specific number of qubits.
+
+    Args:
+        noisy_runner (Runner): The runner to benchmark.
+        num_qubits (int): The number of qubits to test.
+        num_trials (int, optional): The number of trials in the test. Defaults to 100.
+        shots (int, optional): The number of shots for each trial. Defaults to 100.
+
+    Returns:
+        bool: If the experiment passes.
+    """
     qv_circs = [QuantumVolume(num_qubits) for _ in range(num_trials)]
     for qv_circ in qv_circs:
         qv_circ.measure_active()
@@ -37,15 +77,13 @@ def _run_qv_experiment(
         hops.append(_calculate_heavy_output_probability(sim_res, noisy_res))
 
     mean_hop = np.mean(hops)
+
     sigma_hop = (mean_hop * ((1.0 - mean_hop) / num_trials)) ** 0.5
-
-    z = 2
     threshold = 2 / 3 + z * sigma_hop
-    z_value = (mean_hop - 2 / 3) / sigma_hop
-    confidence = 0.5 * (1 + math.erf(z_value / 2**0.5))
 
-    if confidence < 0.977:
-        return False
+    logger.info(f"Mean hop: {mean_hop}")
+    logger.info(f"Threshold: {threshold}")
+    logger.info(f"Sigma hop: {sigma_hop}")
 
     if mean_hop < threshold:
         return False
@@ -58,6 +96,7 @@ def find_quantum_volume(
     num_trials: int = 100,
     max_num_qubits: int = 7,
     shots: int = 100,
+    z: int = 2,
 ) -> int:
     """Finds the quantum volume of a noisy backend using binary search.
 
@@ -74,10 +113,17 @@ def find_quantum_volume(
     upper_bound = max_num_qubits
     while lower_bound != upper_bound:
         mid = (lower_bound + upper_bound) // 2
-        logging.info(f"Trying depth {mid}")
-        if _run_qv_experiment(noisy_runner, mid, num_trials=num_trials, shots=shots):
+        logger.info(f"Trying depth {mid}")
+        if _run_qv_experiment(
+            noisy_runner,
+            mid,
+            num_trials=num_trials,
+            shots=shots,
+            z=z,
+        ):
             lower_bound = mid + 1
-            logging.info(f"Quantum volume {2 ** mid} passed")
+            logger.info(f"Quantum volume {2 ** mid} passed")
         else:
             upper_bound = mid
+            logger.info(f"Quantum volume {2 ** mid} failed")
     return 2 ** (lower_bound - 1)
