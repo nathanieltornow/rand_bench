@@ -1,5 +1,27 @@
 # Benchmaring Quantum Devices
 
+## Installation
+
+```shell
+git clone https://github.com/nathanieltornow/qpu_bench.git && cd qpu_bench
+```
+```shell
+python3 -m venv .venv
+```
+```shell
+source .venv/bin/activate
+```
+```shell
+pip install --upgrade pip
+```
+```shell
+pip install -r requirements.txt
+```
+```shell
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+```
+
+
 ## Quantum Volume
 
 Quantum Volume is a single-number metric to benchmark the performance of QPUs. It is defined as the largest random circuit of equal width and depth that the QPU successfully implements.
@@ -21,7 +43,7 @@ backend = FakeMontreal()
 # create a runner of a noisy simulator
 runner = SimulatedBackendRunner(backend)
 
-# run the quantum volume algorithm, which return the quantum volume of the device
+# run the quantum volume algorithm, which returns the quantum volume of the device
 quantum_volume = find_quantum_volume(runner)
 print(quantum_volume)
 ```
