@@ -1,6 +1,6 @@
-import math
 import logging
 
+import matplotlib.pyplot as plt
 import numpy as np
 from qiskit.circuit.library import QuantumVolume
 
@@ -48,6 +48,7 @@ def _run_qv_experiment(
     num_trials: int = 100,
     shots: int = 100,
     z: int = 2,
+    plot: bool = True,
 ) -> bool:
     """
     Runs a single quantum volume experiment.
@@ -87,6 +88,12 @@ def _run_qv_experiment(
     logger.info(f"Threshold: {threshold}")
     logger.info(f"Sigma hop: {sigma_hop}")
 
+    x = np.arange(start=1, stop=num_trials + 1, step=1)
+
+    if plot:
+        plt.plot(x, np.array(hops), ".")
+        plt.show()
+
     # return true if the mean hop is greater than the threshold
     if mean_hop < threshold:
         return False
@@ -99,6 +106,7 @@ def find_quantum_volume(
     max_num_qubits: int = 7,
     shots: int = 100,
     z: int = 2,
+    plot: bool = False,
 ) -> int:
     """Finds the quantum volume of a noisy backend using binary search.
 

@@ -26,11 +26,7 @@ class BackendRunner(Runner):
 
     def run(self, circuits: list[QuantumCircuit], shots: int = 100) -> list[ProbDistr]:
         circuits = transpile(circuits, backend=self._backend, **self._compile_options)
-        counts = (
-            self._backend.run(circuits, shots=shots)
-            .result()
-            .get_counts()
-        )
+        counts = self._backend.run(circuits, shots=shots).result().get_counts()
         counts = [counts] if isinstance(counts, dict) else counts
         return [ProbDistr.from_counts(count) for count in counts]
 
@@ -45,6 +41,6 @@ class SimulatedBackendRunner(BackendRunner):
         super().__init__(AerSimulator.from_backend(backend), compiler_options)
 
 
-class IBMRunner(Runner):
+class IBMRunner(BackendRunner):
     def __init__(self, provider: IBMProvider, backend_name: str) -> None:
         super().__init__(provider.get_backend(backend_name))
