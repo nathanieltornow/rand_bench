@@ -1,14 +1,9 @@
-import logging
-
 import matplotlib.pyplot as plt
 import numpy as np
 from qiskit.circuit.library import QuantumVolume
 
 from .runner import Runner, SimulatorRunner
 from .prob_distr import ProbDistr
-
-
-logger = logging.getLogger("qpu_bench")
 
 
 def _calculate_heavy_output(prob_distr: ProbDistr) -> list[str]:
@@ -74,7 +69,7 @@ def _run_qv_experiment(
     # run the QV circuits on the noisy QPU
     noisy_results = noisy_runner.run(qv_circs, shots=shots)
 
-    # calculate the probability of heavy output for each trial
+    # calculate the probability of heavy output (hop) for each trial
     hops = []
     for sim_res, noisy_res in zip(sim_results, noisy_results):
         hops.append(_calculate_heavy_output_probability(sim_res, noisy_res))
@@ -84,9 +79,9 @@ def _run_qv_experiment(
     sigma_hop = (mean_hop * ((1.0 - mean_hop) / num_trials)) ** 0.5
     threshold = 2 / 3 + z * sigma_hop
 
-    logger.info(f"Mean hop: {mean_hop}")
-    logger.info(f"Threshold: {threshold}")
-    logger.info(f"Sigma hop: {sigma_hop}")
+    # logger.info(f"Mean hop: {mean_hop}")
+    # logger.info(f"Threshold: {threshold}")
+    # logger.info(f"Sigma hop: {sigma_hop}")
 
     x = np.arange(start=1, stop=num_trials + 1, step=1)
 
@@ -106,7 +101,7 @@ def find_quantum_volume(
     max_num_qubits: int = 7,
     shots: int = 100,
     z: int = 2,
-    plot: bool = False,
+    plot: bool = True,
 ) -> int:
     """Finds the quantum volume of a noisy backend using binary search.
 
@@ -123,17 +118,18 @@ def find_quantum_volume(
     upper_bound = max_num_qubits
     while lower_bound != upper_bound:
         mid = (lower_bound + upper_bound) // 2
-        logger.info(f"Trying depth {mid}")
+        print(f"Trying QV {2**mid}")
         if _run_qv_experiment(
             noisy_runner,
             mid,
             num_trials=num_trials,
             shots=shots,
             z=z,
+            plot=plot,
         ):
             lower_bound = mid + 1
-            logger.info(f"Quantum volume {2 ** mid} passed")
+            print(f"QV {2 ** mid} passed")
         else:
             upper_bound = mid
-            logger.info(f"Quantum volume {2 ** mid} failed")
+            print(f"QV {2 ** mid} failed")
     return 2 ** (lower_bound - 1)
