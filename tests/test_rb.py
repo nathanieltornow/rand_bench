@@ -1,5 +1,5 @@
-from qpu_bench.rand_bench import _generate_rb_circuits
-from qpu_bench.runner import SimulatorRunner
+from rb.rand_bench import _generate_rb_circuits
+from rb.runner import SimulatorRunner
 
 
 def test_clifford_generation():
