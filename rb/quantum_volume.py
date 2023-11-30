@@ -64,7 +64,7 @@ def find_quantum_volume(
     noisy_runner: Runner,
     num_trials: int = 100,
     shots: int = 100,
-    max_num_qubits: int = 8,
+    max_num_qubits: int = 6,
 ) -> int:
     """Find the quantum volume of a noisy runner by binary search.
 
@@ -99,6 +99,7 @@ def find_quantum_volume(
         else:
             upper_bound = mid
             print(f"❌")
+    print(f"QV: {2 ** (lower_bound - 1)} 🎉")
     return 2 ** (lower_bound - 1)
 
 
