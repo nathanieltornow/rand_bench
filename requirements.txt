@@ -1,4 +1,0 @@
-mypy
-black
-pytest
-jupyter

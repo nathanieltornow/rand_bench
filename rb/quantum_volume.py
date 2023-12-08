@@ -1,16 +1,19 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from qiskit.circuit.library import QuantumVolume
+from qiskit.compiler import transpile
+from qiskit.providers import BackendV2
+from qiskit_aer import AerSimulator
 
-from .runner import Runner, SimulatorRunner
-from .prob_distr import ProbDistr
+from .util import counts_to_probs
 
 
 def run_qv_experiment(
-    noisy_runner: Runner,
+    qpu: BackendV2,
     num_qubits: int,
     num_trials: int = 100,
     shots: int = 100,
+    optimization_level: int = 3,
 ) -> np.array:
     """
     Runs a single quantum volume experiment.
@@ -29,12 +32,16 @@ def run_qv_experiment(
     for qv_circ in qv_circs:
         qv_circ.measure_active()
 
+    qv_circs = transpile(qv_circs, backend=qpu, optimization_level=optimization_level)
+
     # simulate the QV circuits without noise for the comparison
-    sim_runner = SimulatorRunner()
-    sim_results = sim_runner.run(qv_circs, shots=shots)
+    sim = AerSimulator()
+    sim_results = counts_to_probs(sim.run(qv_circs, shots=shots).result().get_counts())
 
     # run the QV circuits on the noisy QPU
-    noisy_results = noisy_runner.run(qv_circs, shots=shots)
+    noisy_results = counts_to_probs(
+        qpu.run(qv_circs, shots=shots).result().get_counts()
+    )
 
     return np.array(
         [
@@ -61,7 +68,7 @@ def is_successful(hops: np.array) -> bool:
 
 
 def find_quantum_volume(
-    noisy_runner: Runner,
+    qpu: BackendV2,
     num_trials: int = 100,
     shots: int = 100,
     max_num_qubits: int = 6,
@@ -86,7 +93,7 @@ def find_quantum_volume(
         mid = (lower_bound + upper_bound) // 2
         print(f"-------\nTrying for QV {2 ** mid}...")
         qv_result = run_qv_experiment(
-            noisy_runner,
+            qpu,
             mid,
             num_trials=num_trials,
             shots=shots,
@@ -174,7 +181,7 @@ def _plot_qv_probs(ax: plt.Axes, hops: np.array, z: int = 2):
     ax.axhline(mean_hop, color="blue", label="Mean", linewidth=3)
 
 
-def calculate_heavy_output(prob_distr: ProbDistr) -> set[str]:
+def calculate_heavy_output(prob_distr: dict[str, float]) -> set[str]:
     """
     Calculates the heavy output of a probability distribution.
     A heavy output is an output with probability greater than or equal to the median.
@@ -190,7 +197,7 @@ def calculate_heavy_output(prob_distr: ProbDistr) -> set[str]:
 
 
 def calculate_heavy_output_probability(
-    sim_result: ProbDistr, noisy_result: ProbDistr
+    sim_result: dict[str, float], noisy_result: dict[str, float]
 ) -> float:
     """Calculates the probability of heavy output.
 

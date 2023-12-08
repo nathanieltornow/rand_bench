@@ -6,9 +6,18 @@ from scipy.optimize import curve_fit
 
 from qiskit.exceptions import QiskitError
 from qiskit.circuit import QuantumCircuit, Gate
+from qiskit.providers import BackendV2
+from qiskit.compiler import transpile
+from qiskit.transpiler import CouplingMap
 from qiskit.quantum_info import random_clifford, Clifford
 
-from .runner import Runner
+from .util import counts_to_probs
+
+OPT_LVL = 1
+NUM_SAMPLES = 5
+
+SEQUENCE_LENGTHS_1Q = np.arange(2, 2000, 400)
+SEQUENCE_LENGTHS_2Q = np.arange(2, 200, 20)
 
 
 @dataclass
@@ -19,7 +28,79 @@ class RBResult:
     err_probs: np.array
 
 
-def _plot_rb_probs(
+def exp_decay(x, a, alpha, b):
+    """The exponential decay function."""
+    return a * alpha**x + b
+
+
+def benchmark_qpu_1q(qpu: BackendV2, gate: Gate | None = None) -> list[float]:
+    errors = []
+    for qubit in range(qpu.num_qubits):
+        epc = get_errors_on_qubits(qpu, [qubit], SEQUENCE_LENGTHS_1Q, gate)
+        errors.append(epc * 100)
+    return errors
+
+
+def benchmark_qpu_2q(
+    qpu: BackendV2, gate: Gate | None = None
+) -> dict[tuple[int, int], float]:
+    errors = {}
+    coupling_map: CouplingMap = qpu.coupling_map
+
+    done_edges = set()
+    for qubit1, qubit2 in coupling_map.get_edges():
+        # skip if the edge has already been done
+        if (qubit2, qubit1) in done_edges:
+            continue
+        done_edges.add((qubit1, qubit2))
+
+        epc = get_errors_on_qubits(qpu, [qubit1, qubit2], SEQUENCE_LENGTHS_2Q, gate)
+        errors[(qubit1, qubit2)] = epc * 100
+    return errors
+
+
+def get_errors_on_qubits(
+    qpu: BackendV2,
+    qubits: list[int],
+    sequence_lengths: np.ndarray,
+    interleaved_gate: Gate | None = None,
+) -> float:
+    if interleaved_gate is None:
+        return _errors_on_qubits_standard(
+            qpu, qubits, sequence_lengths=sequence_lengths
+        )
+    return _errors_on_qubits_interleaved(
+        qpu, qubits, interleaved_gate, sequence_lengths
+    )
+
+
+def _errors_on_qubits_standard(
+    qpu: BackendV2, qubits: list[int], sequence_lengths: np.ndarray
+) -> float:
+    result = run_standard_rb(
+        qpu,
+        qubits,
+        sequence_lengths=sequence_lengths,
+    )
+    return calculate_standard_epc(result)
+
+
+def _errors_on_qubits_interleaved(
+    qpu: BackendV2, qubits: list[int], gate: Gate, sequence_lengths: np.ndarray
+) -> float:
+    if gate.num_qubits != len(qubits):
+        raise ValueError("Gate has to have the same number of qubits as the qubits")
+
+    res_std, res_inter = run_interleaved_rb(
+        qpu,
+        qubits,
+        gate=gate,
+        sequence_lengths=sequence_lengths,
+    )
+    return calculate_interleaved_epc(res_std, res_inter)
+
+
+def plot_rb_probs(
     ax: plt.Axes,
     rb_result: RBResult,
     color: str = "blue",
@@ -34,18 +115,23 @@ def _plot_rb_probs(
         capsize=3,
         label=label,
     )
+    ax.set_xlabel("Sequence length")
+    ax.set_ylabel(r"$P(|0\rangle)$")
 
 
-def _plot_rb_fit(
+def plot_rb_fit(
     ax: plt.Axes, rb_result: RBResult, label: str = "Fit", color: str = "red"
 ) -> None:
     params, _ = curve_fit(
-        _exp_decay, rb_result.sequence_lengths, rb_result.mean_probs, bounds=(0, 1)
+        exp_decay,
+        rb_result.sequence_lengths,
+        rb_result.mean_probs,
+        bounds=(0, 1),
+        p0=_guesses(rb_result.mean_probs),
     )
-    print(params)
     ax.plot(
         rb_result.sequence_lengths,
-        _exp_decay(rb_result.sequence_lengths, *params),
+        exp_decay(rb_result.sequence_lengths, *params),
         "-",
         label=label,
         color=color,
@@ -53,7 +139,7 @@ def _plot_rb_fit(
     )
 
 
-def _generate_clifford_sequences(
+def generate_clifford_sequences(
     num_qubits: int,
     sequence_lengths: np.array,
 ) -> list[list[Clifford]]:
@@ -63,7 +149,7 @@ def _generate_clifford_sequences(
     return sequences
 
 
-def _clifford_sequences_to_circuits(
+def clifford_sequences_to_circuits(
     clifford_sequences: list[list[Clifford]],
     num_qubits: int,
     interleaved_gate: Gate | None = None,
@@ -103,6 +189,7 @@ def _clifford_sequences_to_circuits(
         circ = QuantumCircuit(num_qubits)
         for clifford in sequence:
             circ.append(clifford.to_instruction(), range(num_qubits))
+            circ.barrier(range(num_qubits))
         inv = Clifford.from_circuit(circ).adjoint().to_instruction()
         circ.compose(inv, inplace=True)
         circ.measure_all()
@@ -110,10 +197,21 @@ def _clifford_sequences_to_circuits(
     return circs
 
 
+def _guesses(probs: np.array) -> tuple[float, float, float]:
+    a = probs[0] - probs[-1]
+    b = probs[-1]
+    alpha = 0.99
+    return a, alpha, b
+
+
 def calculate_standard_epc(rb_result: RBResult) -> float:
     # fit the data to an exponential decay
     params, _ = curve_fit(
-        _exp_decay, rb_result.sequence_lengths, rb_result.mean_probs, bounds=(0, 1)
+        exp_decay,
+        rb_result.sequence_lengths,
+        rb_result.mean_probs,
+        bounds=(0, 1),
+        p0=_guesses(rb_result.mean_probs),
     )
     # calculate the error per Clifford
     d = 2**rb_result.num_qubits
@@ -125,13 +223,18 @@ def calculate_standard_epc(rb_result: RBResult) -> float:
 def calculate_interleaved_epc(standard_rb: RBResult, interleaved_rb: RBResult) -> float:
     # fit the data to an exponential decay
     params, _ = curve_fit(
-        _exp_decay, standard_rb.sequence_lengths, standard_rb.mean_probs, bounds=(0, 1)
+        exp_decay,
+        standard_rb.sequence_lengths,
+        standard_rb.mean_probs,
+        bounds=(0, 1),
+        p0=_guesses(standard_rb.mean_probs),
     )
     inter_params, _ = curve_fit(
-        _exp_decay,
+        exp_decay,
         interleaved_rb.sequence_lengths,
         interleaved_rb.mean_probs,
         bounds=(0, 1),
+        p0=_guesses(interleaved_rb.mean_probs),
     )
 
     # calculate the error of the gate
@@ -142,22 +245,28 @@ def calculate_interleaved_epc(standard_rb: RBResult, interleaved_rb: RBResult) -
 
 
 def run_standard_rb(
-    noisy_runner: Runner,
-    num_qubits: int,
+    qpu: BackendV2,
+    qubits: list[int],
     sequence_lengths: np.ndarray,
     shots: int = 100,
-    num_samples: int = 3,
-) -> int:
+    num_samples: int = NUM_SAMPLES,
+) -> RBResult:
     all_circuits = []
+
+    num_qubits = len(qubits)
 
     for _ in range(num_samples):
         # Generate the random clifford sequences
-        clifford_sequences = _generate_clifford_sequences(num_qubits, sequence_lengths)
-        circuits = _clifford_sequences_to_circuits(clifford_sequences, num_qubits)
+        clifford_sequences = generate_clifford_sequences(num_qubits, sequence_lengths)
+        circuits = clifford_sequences_to_circuits(clifford_sequences, num_qubits)
+        circuits = transpile(
+            circuits, backend=qpu, initial_layout=qubits, optimization_level=OPT_LVL
+        )
         all_circuits += circuits
 
     # Run the circuits
-    prob_dists = noisy_runner.run(all_circuits, shots=shots)
+    counts = qpu.run(all_circuits, shots=shots).result().get_counts()
+    prob_dists = counts_to_probs(counts)
 
     y = np.array([probs.get("0" * num_qubits, 0.0) for probs in prob_dists]).reshape(
         (num_samples, -1)
@@ -174,16 +283,19 @@ def run_standard_rb(
 
 
 def run_interleaved_rb(
-    noisy_runner: Runner,
+    qpu: BackendV2,
+    qubits: list[int],
     gate: Gate,
     sequence_lengths: np.ndarray,
     shots: int = 100,
-    num_samples: int = 3,
+    num_samples: int = NUM_SAMPLES,
 ) -> tuple[RBResult, RBResult]:
     try:
         _ = Clifford(gate)
     except ValueError:
         raise ValueError("The interleaved gate must be a Clifford.")
+
+    assert len(qubits) == gate.num_qubits
 
     num_qubits = gate.num_qubits
 
@@ -192,18 +304,31 @@ def run_interleaved_rb(
 
     for _ in range(num_samples):
         # Generate the random clifford sequences
-        clifford_sequences = _generate_clifford_sequences(num_qubits, sequence_lengths)
-        circuits = _clifford_sequences_to_circuits(clifford_sequences, num_qubits)
-        inter_circuits = _clifford_sequences_to_circuits(
+        clifford_sequences = generate_clifford_sequences(num_qubits, sequence_lengths)
+        circuits = clifford_sequences_to_circuits(clifford_sequences, num_qubits)
+        circuits = transpile(
+            circuits, backend=qpu, initial_layout=qubits, optimization_level=OPT_LVL
+        )
+
+        inter_circuits = clifford_sequences_to_circuits(
             clifford_sequences, num_qubits, gate
+        )
+        inter_circuits = transpile(
+            inter_circuits,
+            backend=qpu,
+            initial_layout=qubits,
+            optimization_level=OPT_LVL,
         )
 
         all_standard_circuits += circuits
         all_interleaved_circuits += inter_circuits
 
-    # Run the clifford circuits on the noisy backend
-    prob_dists = noisy_runner.run(all_standard_circuits, shots=shots)
-    inter_prob_dists = noisy_runner.run(all_interleaved_circuits, shots=shots)
+    prob_dists = counts_to_probs(
+        qpu.run(all_standard_circuits, shots=shots).result().get_counts()
+    )
+    inter_prob_dists = counts_to_probs(
+        qpu.run(all_interleaved_circuits, shots=shots).result().get_counts()
+    )
 
     probs = np.array(
         [probs.get("0" * num_qubits, 0.0) for probs in prob_dists]
@@ -230,8 +355,3 @@ def run_interleaved_rb(
         inter_y_err,
     )
     return std_res, inter_res
-
-
-def _exp_decay(x, a, alpha, b):
-    """The exponential decay function."""
-    return a * alpha**x + b

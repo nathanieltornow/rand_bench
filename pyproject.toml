@@ -1,0 +1,30 @@
+[project]
+name = "rand_bench"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Nathaniel Tornow", email = "nathaniel.tornow@tum.de"},
+]
+dependencies = [
+    "qiskit>=0.45.1",
+    "numpy>=1.26.2",
+    "matplotlib>=3.8.2",
+    "scipy>=1.11.4",
+    "qiskit-aer>=0.13.1",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "mypy>=1.7.1",
+    "black>=23.11.0",
+    "pytest>=7.4.3",
+    "jupyter>=1.0.0",
+    "pylatexenc>=2.10",
+]
