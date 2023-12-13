@@ -6,11 +6,11 @@ authors = [
     {name = "Nathaniel Tornow", email = "nathaniel.tornow@tum.de"},
 ]
 dependencies = [
-    "qiskit>=0.45.1",
+    "qiskit==0.45.0",
     "numpy>=1.26.2",
     "matplotlib>=3.8.2",
     "scipy>=1.11.4",
-    "qiskit-aer>=0.13.1",
+    "qiskit-aer==0.13.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -27,4 +27,5 @@ dev = [
     "pytest>=7.4.3",
     "jupyter>=1.0.0",
     "pylatexenc>=2.10",
+    "seaborn>=0.13.0",
 ]

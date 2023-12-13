@@ -16,8 +16,8 @@ from .util import counts_to_probs
 OPT_LVL = 1
 NUM_SAMPLES = 5
 
-SEQUENCE_LENGTHS_1Q = np.arange(2, 2000, 400)
-SEQUENCE_LENGTHS_2Q = np.arange(2, 200, 20)
+SEQUENCE_LENGTHS_1Q = np.arange(2, 3000, 400)
+SEQUENCE_LENGTHS_2Q = np.arange(1, 150, 20)
 
 
 @dataclass
