@@ -1,11 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from qiskit.circuit.library import QuantumVolume
-from qiskit.compiler import transpile
 from qiskit.providers import BackendV2
 from qiskit_aer import AerSimulator
 
-from .util import counts_to_probs
+from .util import counts_to_probs, CustomTranspiler, BackendTranspiler
 
 
 def run_qv_experiment(
@@ -14,6 +13,7 @@ def run_qv_experiment(
     num_trials: int = 100,
     shots: int = 100,
     optimization_level: int = 3,
+    custom_transpiler: CustomTranspiler | None = None,
 ) -> np.array:
     """
     Runs a single quantum volume experiment.
@@ -28,11 +28,14 @@ def run_qv_experiment(
     Returns:
         bool: If the experiment passes.
     """
+    if custom_transpiler is None:
+        custom_transpiler = BackendTranspiler(qpu, optimization_level=optimization_level)
+
     qv_circs = [QuantumVolume(num_qubits).decompose() for _ in range(num_trials)]
     for qv_circ in qv_circs:
         qv_circ.measure_active()
 
-    qv_circs = transpile(qv_circs, backend=qpu, optimization_level=optimization_level)
+    qv_circs = custom_transpiler.run(qv_circs)
 
     # simulate the QV circuits without noise for the comparison
     sim = AerSimulator()
@@ -72,6 +75,7 @@ def find_quantum_volume(
     num_trials: int = 100,
     shots: int = 100,
     max_num_qubits: int = 6,
+    custom_transpiler: CustomTranspiler | None = None,
 ) -> int:
     """Find the quantum volume of a noisy runner by binary search.
 
@@ -97,6 +101,7 @@ def find_quantum_volume(
             mid,
             num_trials=num_trials,
             shots=shots,
+            custom_transpiler=custom_transpiler,
         )
         results[mid] = qv_result
 
