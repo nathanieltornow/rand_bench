@@ -7,6 +7,35 @@ from qiskit_aer import AerSimulator
 from .util import counts_to_probs, CustomTranspiler, BackendTranspiler
 
 
+def heavy_output(prob_distr: dict[str, float]) -> set[str]:
+    """Calculates the heavy output set of a probability distribution.
+
+    Args:
+        prob_distr (dict[str, float]): The probability distribution.
+
+    Returns:
+        set[str]: The heavy output set.
+    """
+    median = np.median(list(prob_distr.values()))
+    return set(k for k, v in prob_distr.items() if v >= median)
+
+
+def heavy_output_probability(
+    sim_result: dict[str, float], noisy_result: dict[str, float]
+) -> float:
+    """Calculates the heavy output probability of a noisy result.
+
+    Args:
+        sim_result (dict[str, float]): The ideal result.
+        noisy_result (dict[str, float]): The noisy result.
+
+    Returns:
+        float: The heavy output probability.
+    """
+    sim_heavy_output = heavy_output(sim_result)
+    return sum(noisy_result.get(k, 0.0) for k in sim_heavy_output)
+
+
 def run_qv_experiment(
     qpu: BackendV2,
     num_qubits: int,
@@ -15,21 +44,23 @@ def run_qv_experiment(
     optimization_level: int = 3,
     custom_transpiler: CustomTranspiler | None = None,
 ) -> np.array:
-    """
-    Runs a single quantum volume experiment.
-    Returns true, if the experiment passes for the specific number of qubits.
+    """Runs a single quantum volume experiment.
 
     Args:
-        noisy_runner (Runner): The runner to benchmark.
-        num_qubits (int): The number of qubits to test.
-        num_trials (int, optional): The number of trials in the test. Defaults to 100.
-        shots (int, optional): The number of shots for each trial. Defaults to 100.
+        qpu (BackendV2): The noisy QPU.
+        num_qubits (int): The number of qubits to test $d$.
+        num_trials (int, optional): Number of trials. Defaults to 100.
+        shots (int, optional): Number of shots for each trial. Defaults to 100.
+        optimization_level (int, optional): Optimization level for transpiling. Defaults to 3.
+        custom_transpiler (CustomTranspiler | None, optional): A custom transpiler. Defaults to None.
 
     Returns:
-        bool: If the experiment passes.
+        np.array: The heavy output probabilities for each trial.
     """
     if custom_transpiler is None:
-        custom_transpiler = BackendTranspiler(qpu, optimization_level=optimization_level)
+        custom_transpiler = BackendTranspiler(
+            qpu, optimization_level=optimization_level
+        )
 
     qv_circs = [QuantumVolume(num_qubits).decompose() for _ in range(num_trials)]
     for qv_circ in qv_circs:
@@ -48,7 +79,7 @@ def run_qv_experiment(
 
     return np.array(
         [
-            calculate_heavy_output_probability(sim_res, noisy_res)
+            heavy_output_probability(sim_res, noisy_res)
             for sim_res, noisy_res in zip(sim_results, noisy_results)
         ]
     )
@@ -85,7 +116,8 @@ def find_quantum_volume(
             The number of trials for each QV circuit size. Defaults to 100.
         shots (int, optional): The number of shots for each run. Defaults to 100.
         max_num_qubits (int, optional):
-        The maximal number of qubits to constrain the binary search. Defaults to 10.
+            The maximal number of qubits to constrain the binary search. Defaults to 10.
+        custom_transpiler (CustomTranspiler | None, optional): A custom transpiler. Defaults to None.
 
     Returns:
         int: The quantum volume.
@@ -119,17 +151,15 @@ def plot_qv_experiment(
     hops: np.array,
     fig_size: tuple[float, float] = (12, 3.8),
 ) -> plt.Figure:
-    """Runs and plots a single quantum volume experiment.
+    """Plot the results of a quantum volume experiment.
 
     Args:
-        noisy_runner (Runner): The runner to benchmark.
-        num_qubits (int): The number of qubits to test.
-        num_trials (int, optional): The number of trials. Defaults to 100.
-        shots (int, optional): The number of shots per trial. Defaults to 100.
-        fig_size (tuple[float, float], optional): The size of the plot. Defaults to (12, 3.8).
+        hops (np.array): The heavy output probabilities for each trial.
+        fig_size (tuple[float, float], optional):
+            The size of the plot. Defaults to (12, 3.8).
 
     Returns:
-        plt.Figure: The plot as a figure.
+        plt.Figure: The figure.
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=fig_size)
     _plot_qv_probs(ax1, hops)
@@ -184,34 +214,3 @@ def _plot_qv_probs(ax: plt.Axes, hops: np.array, z: int = 2):
     ax.set_ylabel("Heavy Output Probability")
     ax.axhline(threshold, color="red", label="Threshold", linewidth=3, linestyle="--")
     ax.axhline(mean_hop, color="blue", label="Mean", linewidth=3)
-
-
-def calculate_heavy_output(prob_distr: dict[str, float]) -> set[str]:
-    """
-    Calculates the heavy output of a probability distribution.
-    A heavy output is an output with probability greater than or equal to the median.
-
-    Args:
-        prob_distr (ProbDistr): The probability distribution.
-
-    Returns:
-        list[str]: The heavy outputs.
-    """
-    median = np.median(list(prob_distr.values()))
-    return set(k for k, v in prob_distr.items() if v >= median)
-
-
-def calculate_heavy_output_probability(
-    sim_result: dict[str, float], noisy_result: dict[str, float]
-) -> float:
-    """Calculates the probability of heavy output.
-
-    Args:
-        sim_result (ProbDistr): The results of perfect simulation.
-        noisy_result (ProbDistr): The noisy results.
-
-    Returns:
-        float: The probability of heavy output.
-    """
-    sim_heavy_output = calculate_heavy_output(sim_result)
-    return sum(noisy_result.get(k, 0.0) for k in sim_heavy_output)

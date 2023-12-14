@@ -34,6 +34,15 @@ def exp_decay(x, a, alpha, b):
 
 
 def benchmark_qpu_1q(qpu: BackendV2, gate: Gate | None = None) -> list[float]:
+    """Benchmarks every qubit of a QPU with 1Q RB.
+
+    Args:
+        qpu (BackendV2): The QPU to benchmark.
+        gate (Gate | None, optional): An optional interleaved gate. Defaults to None.
+
+    Returns:
+        list[float]: The error per Clifford/Gate for each qubit.
+    """
     errors = []
     for qubit in range(qpu.num_qubits):
         epc = get_errors_on_qubits(qpu, [qubit], SEQUENCE_LENGTHS_1Q, gate)
@@ -44,6 +53,15 @@ def benchmark_qpu_1q(qpu: BackendV2, gate: Gate | None = None) -> list[float]:
 def benchmark_qpu_2q(
     qpu: BackendV2, gate: Gate | None = None
 ) -> dict[tuple[int, int], float]:
+    """Benchmark every qubit connection of a QPU with 2Q RB.
+
+    Args:
+        qpu (BackendV2): The QPU to benchmark.
+        gate (Gate | None, optional): An optional interleaved gate. Defaults to None.
+
+    Returns:
+        dict[tuple[int, int], float]: The error per Clifford/Gate for each qubit connection.
+    """
     errors = {}
     coupling_map: CouplingMap = qpu.coupling_map
 
@@ -65,6 +83,17 @@ def get_errors_on_qubits(
     sequence_lengths: np.ndarray,
     interleaved_gate: Gate | None = None,
 ) -> float:
+    """Calculates the error per Clifford/Gate for specific qubits.
+
+    Args:
+        qpu (BackendV2): The QPU to benchmark.
+        qubits (list[int]): The qubits to benchmark.
+        sequence_lengths (np.ndarray): The sequence lengths of the RB sequences.
+        interleaved_gate (Gate | None, optional): An optional interleaved gate. Defaults to None.
+
+    Returns:
+        float: The error per Clifford/Gate.
+    """
     if interleaved_gate is None:
         return _errors_on_qubits_standard(
             qpu, qubits, sequence_lengths=sequence_lengths
@@ -74,75 +103,19 @@ def get_errors_on_qubits(
     )
 
 
-def _errors_on_qubits_standard(
-    qpu: BackendV2, qubits: list[int], sequence_lengths: np.ndarray
-) -> float:
-    result = run_standard_rb(
-        qpu,
-        qubits,
-        sequence_lengths=sequence_lengths,
-    )
-    return calculate_standard_epc(result)
-
-
-def _errors_on_qubits_interleaved(
-    qpu: BackendV2, qubits: list[int], gate: Gate, sequence_lengths: np.ndarray
-) -> float:
-    if gate.num_qubits != len(qubits):
-        raise ValueError("Gate has to have the same number of qubits as the qubits")
-
-    res_std, res_inter = run_interleaved_rb(
-        qpu,
-        qubits,
-        gate=gate,
-        sequence_lengths=sequence_lengths,
-    )
-    return calculate_interleaved_epc(res_std, res_inter)
-
-
-def plot_rb_probs(
-    ax: plt.Axes,
-    rb_result: RBResult,
-    color: str = "blue",
-    label: str = "Probs",
-) -> None:
-    ax.errorbar(
-        rb_result.sequence_lengths,
-        rb_result.mean_probs,
-        yerr=rb_result.err_probs,
-        fmt="o",
-        color=color,
-        capsize=3,
-        label=label,
-    )
-    ax.set_xlabel("Sequence length")
-    ax.set_ylabel(r"$P(|0\rangle)$")
-
-
-def plot_rb_fit(
-    ax: plt.Axes, rb_result: RBResult, label: str = "Fit", color: str = "red"
-) -> None:
-    params, _ = curve_fit(
-        exp_decay,
-        rb_result.sequence_lengths,
-        rb_result.mean_probs,
-        bounds=(0, 1),
-        p0=_guesses(rb_result.mean_probs),
-    )
-    ax.plot(
-        rb_result.sequence_lengths,
-        exp_decay(rb_result.sequence_lengths, *params),
-        "-",
-        label=label,
-        color=color,
-        linewidth=3,
-    )
-
-
 def generate_clifford_sequences(
     num_qubits: int,
     sequence_lengths: np.array,
 ) -> list[list[Clifford]]:
+    """Generates random Clifford sequences.
+
+    Args:
+        num_qubits (int): The number of qubits of the cliffords.
+        sequence_lengths (np.array): The sequence lengths of the RB sequences.
+
+    Returns:
+        list[list[Clifford]]: The list of Clifford sequences.
+    """
     sequences = []
     for i in sequence_lengths:
         sequences.append([random_clifford(num_qubits) for _ in range(i)])
@@ -197,14 +170,15 @@ def clifford_sequences_to_circuits(
     return circs
 
 
-def _guesses(probs: np.array) -> tuple[float, float, float]:
-    a = probs[0] - probs[-1]
-    b = probs[-1]
-    alpha = 0.99
-    return a, alpha, b
-
-
 def calculate_standard_epc(rb_result: RBResult) -> float:
+    """Calculates the error per Clifford of a standard RB result.
+
+    Args:
+        rb_result (RBResult): The RB result.
+
+    Returns:
+        float: The error per Clifford.
+    """
     # fit the data to an exponential decay
     params, _ = curve_fit(
         exp_decay,
@@ -221,6 +195,15 @@ def calculate_standard_epc(rb_result: RBResult) -> float:
 
 
 def calculate_interleaved_epc(standard_rb: RBResult, interleaved_rb: RBResult) -> float:
+    """Calculates the error per gate of an interleaved RB result.
+
+    Args:
+        standard_rb (RBResult): The standard RB result.
+        interleaved_rb (RBResult): The interleaved RB result.
+
+    Returns:
+        float: The error per gate.
+    """
     # fit the data to an exponential decay
     params, _ = curve_fit(
         exp_decay,
@@ -251,6 +234,19 @@ def run_standard_rb(
     shots: int = 100,
     num_samples: int = NUM_SAMPLES,
 ) -> RBResult:
+    """Runs a standard RB experiment.
+
+    Args:
+        qpu (BackendV2): The QPU to benchmark.
+        qubits (list[int]): The qubits to benchmark.
+        sequence_lengths (np.ndarray): The sequence lengths of the RB sequences.
+        shots (int, optional): The number of shots for each sequence. Defaults to 100.
+        num_samples (int, optional):
+            The number of samples for each sequence. Defaults to NUM_SAMPLES.
+
+    Returns:
+        RBResult: Result of the RB experiment.
+    """
     all_circuits = []
 
     num_qubits = len(qubits)
@@ -290,6 +286,23 @@ def run_interleaved_rb(
     shots: int = 100,
     num_samples: int = NUM_SAMPLES,
 ) -> tuple[RBResult, RBResult]:
+    """Runs an interleaved RB experiment.
+
+    Args:
+        qpu (BackendV2): The QPU to benchmark.
+        qubits (list[int]): The qubits to benchmark.
+        gate (Gate): The interleaved gate.
+        sequence_lengths (np.ndarray): The sequence lengths of the RB sequences.
+        shots (int, optional): The number of shots for each sequenc. Defaults to 100.
+        num_samples (int, optional):
+            The number of shots for each sequence. Defaults to NUM_SAMPLES.
+
+    Raises:
+        ValueError: If the interleaved gate is not a Clifford.
+
+    Returns:
+        tuple[RBResult, RBResult]: Standard RB result and interleaved RB result.
+    """
     try:
         _ = Clifford(gate)
     except ValueError:
@@ -355,3 +368,75 @@ def run_interleaved_rb(
         inter_y_err,
     )
     return std_res, inter_res
+
+
+def plot_rb_probs(
+    ax: plt.Axes,
+    rb_result: RBResult,
+    color: str = "blue",
+    label: str = "Probs",
+) -> None:
+    ax.errorbar(
+        rb_result.sequence_lengths,
+        rb_result.mean_probs,
+        yerr=rb_result.err_probs,
+        fmt="o",
+        color=color,
+        capsize=3,
+        label=label,
+    )
+    ax.set_xlabel("Sequence length")
+    ax.set_ylabel(r"$P(|0\rangle)$")
+
+
+def plot_rb_fit(
+    ax: plt.Axes, rb_result: RBResult, label: str = "Fit", color: str = "red"
+) -> None:
+    params, _ = curve_fit(
+        exp_decay,
+        rb_result.sequence_lengths,
+        rb_result.mean_probs,
+        bounds=(0, 1),
+        p0=_guesses(rb_result.mean_probs),
+    )
+    ax.plot(
+        rb_result.sequence_lengths,
+        exp_decay(rb_result.sequence_lengths, *params),
+        "-",
+        label=label,
+        color=color,
+        linewidth=3,
+    )
+
+
+def _guesses(probs: np.array) -> tuple[float, float, float]:
+    a = probs[0] - probs[-1]
+    b = probs[-1]
+    alpha = 0.99
+    return a, alpha, b
+
+
+def _errors_on_qubits_standard(
+    qpu: BackendV2, qubits: list[int], sequence_lengths: np.ndarray
+) -> float:
+    result = run_standard_rb(
+        qpu,
+        qubits,
+        sequence_lengths=sequence_lengths,
+    )
+    return calculate_standard_epc(result)
+
+
+def _errors_on_qubits_interleaved(
+    qpu: BackendV2, qubits: list[int], gate: Gate, sequence_lengths: np.ndarray
+) -> float:
+    if gate.num_qubits != len(qubits):
+        raise ValueError("Gate has to have the same number of qubits as the qubits")
+
+    res_std, res_inter = run_interleaved_rb(
+        qpu,
+        qubits,
+        gate=gate,
+        sequence_lengths=sequence_lengths,
+    )
+    return calculate_interleaved_epc(res_std, res_inter)
