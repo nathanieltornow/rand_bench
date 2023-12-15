@@ -3,7 +3,7 @@
 The code for the topic *randomized benchmarking* in the the seminar *Advanced Topics of Quantum Computing*. 
 The code is written in Python and build only on [Qiskit](https://www.ibm.com/quantum/qiskit).
 
-The slides can be found [here](./slides.pdf).
+- [Slides of the talk](./slides.pdf)
 
 ## Project Structure
 
